@@ -18,8 +18,10 @@ class TestExecuteUrl:
         execute_url("things:///add?title=Test")
         
         mock_run.assert_called_once_with(
-            ['osascript', '-e', 'tell application "Things3" to open location "things:///add?title=Test"'],
-            check=True, capture_output=True, text=True
+            ['osascript', '-e',
+             'on run argv\n tell application "Things3" to open location (item 1 of argv)\nend run',
+             'things:///add?title=Test'],
+            check=True, capture_output=True, text=True, timeout=30
         )
     
     @patch('subprocess.run')
@@ -280,3 +282,46 @@ class TestSearch:
         """Test search with special characters."""
         url = search("test & query + special")
         assert "query=test%20%26%20query%20%2B%20special" in url
+
+def test_construct_url_does_not_mutate_params(mock_things_token):
+    params = {'id': '123', 'notes': None}
+    construct_url('update', params)
+    assert params == {'id': '123', 'notes': None}
+
+
+def test_construct_url_only_none_has_no_query_separator():
+    assert construct_url('add', {'notes': None}) == 'things:///add'
+
+
+def test_execute_url_keeps_applescript_and_url_separate(mocker):
+    run = mocker.patch('subprocess.run')
+    url = 'things:///search?query=" & dangerous text'
+    execute_url(url)
+    args = run.call_args.args[0]
+    assert args[-1] == url
+    assert url not in args[2]
+
+
+def test_execute_url_reports_failed_fallback(mocker):
+    mocker.patch('subprocess.run', side_effect=subprocess.CalledProcessError(1, 'osascript'))
+    mocker.patch('webbrowser.open', return_value=False)
+    with pytest.raises(RuntimeError, match='Unable to open Things URL'):
+        execute_url('things:///add?title=Test')
+
+
+def test_execute_url_falls_back_when_osascript_missing(mocker):
+    mocker.patch('subprocess.run', side_effect=FileNotFoundError)
+    browser = mocker.patch('webbrowser.open', return_value=True)
+    execute_url('things:///search?query=Test')
+    browser.assert_called_once()
+
+
+def test_execute_url_timeout_does_not_retry_or_expose_url(mocker):
+    url = 'things:///update?id=123&auth-token=secret'
+    mocker.patch('subprocess.run', side_effect=subprocess.TimeoutExpired(['osascript', url], 30))
+    browser = mocker.patch('webbrowser.open')
+    with pytest.raises(RuntimeError, match='may have been applied') as error:
+        execute_url(url)
+    assert 'secret' not in str(error.value)
+    assert url not in str(error.value)
+    browser.assert_not_called()

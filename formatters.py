@@ -1,11 +1,11 @@
-import logging
+from collections.abc import Callable
+from functools import cache
+
 import things
 
-logger = logging.getLogger(__name__)
-
-def format_todo(todo: dict) -> str:
+def format_todo(todo: dict, *, lookup: Callable[[str], dict | None] | None = None) -> str:
     """Helper function to format a single todo into a readable string."""
-    logger.debug(f"Formatting todo: {todo}")
+    lookup = lookup or things.get
     todo_text = f"Title: {todo['title']}"
     
     # Add UUID for reference
@@ -34,33 +34,16 @@ def format_todo(todo: dict) -> str:
     if todo.get('notes'):
         todo_text += f"\nNotes: {todo['notes']}"
     
-    # Add project info if present
-    if todo.get('project'):
-        try:
-            project = things.get(todo['project'])
-            if project:
-                todo_text += f"\nProject: {project['title']}"
-        except Exception:
-            pass
+    for field, label in (("project", "Project"), ("heading", "Heading"), ("area", "Area")):
+        if todo.get(field):
+            try:
+                related = lookup(todo[field])
+                if related:
+                    todo_text += f"\n{label}: {related['title']}"
+            except Exception:
+                # A stale related item must not hide the task itself.
+                pass
 
-    # Add heading info if present
-    if todo.get('heading'):
-        try:
-            heading = things.get(todo['heading'])
-            if heading:
-                todo_text += f"\nHeading: {heading['title']}"
-        except Exception:
-            pass
-            
-    # Add area info if present
-    if todo.get('area'):
-        try:
-            area = things.get(todo['area'])
-            if area:
-                todo_text += f"\nArea: {area['title']}"
-        except Exception:
-            pass
-    
     # Add tags if present
     if todo.get('tags'):
         todo_text += f"\nTags: {', '.join(todo['tags'])}"
@@ -73,6 +56,15 @@ def format_todo(todo: dict) -> str:
             todo_text += f"\n  {status} {item['title']}"
     
     return todo_text
+
+
+def format_todos(todos: list[dict] | None, empty_message: str = "No items found") -> str:
+    """Format one response, reusing related-item lookups only within that response."""
+    if not todos:
+        return empty_message
+    lookup = cache(things.get)
+    return "\n\n---\n\n".join(format_todo(todo, lookup=lookup) for todo in todos)
+
 
 def format_project(project: dict, include_items: bool = False) -> str:
     """Helper function to format a single project."""
@@ -146,7 +138,7 @@ def format_tag(tag: dict, include_items: bool = False) -> str:
 def format_heading(heading: dict, include_items: bool = False) -> str:
     """Helper function to format a single heading."""
     heading_text = f"Title: {heading['title']}\nUUID: {heading['uuid']}"
-    heading_text += f"\nType: heading"
+    heading_text += "\nType: heading"
     
     # Add project info if present
     if heading.get('project'):

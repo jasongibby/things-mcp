@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 @pytest.fixture
 def mock_todo():
@@ -106,3 +106,8 @@ def mock_things_projects():
             {'title': 'Project 2', 'uuid': 'project-2'}
         ]
         yield mock
+
+@pytest.fixture(autouse=True)
+def isolate_related_item_reads():
+    with patch('things.get', return_value=None):
+        yield

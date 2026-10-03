@@ -1,13 +1,8 @@
 from typing import List
-import logging
 import things
 from fastmcp import FastMCP
-from formatters import format_todo, format_project, format_area, format_tag
+from formatters import format_todos, format_project, format_area, format_tag, format_heading
 import url_scheme
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP("Things")
@@ -17,46 +12,31 @@ mcp = FastMCP("Things")
 async def get_inbox() -> str:
     """Get todos from Inbox"""
     todos = things.inbox(include_items=True)
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 @mcp.tool
 async def get_today() -> str:
     """Get todos due today"""
     todos = things.today(include_items=True)
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 @mcp.tool
 async def get_upcoming() -> str:
     """Get upcoming todos"""
     todos = things.upcoming(include_items=True)
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 @mcp.tool
 async def get_anytime() -> str:
     """Get todos from Anytime list"""
     todos = things.anytime(include_items=True)
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 @mcp.tool
 async def get_someday() -> str:
     """Get todos from Someday list"""
     todos = things.someday(include_items=True)
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 @mcp.tool
 async def get_logbook(period: str = "7d", limit: int = 50) -> str:
@@ -69,23 +49,17 @@ async def get_logbook(period: str = "7d", limit: int = 50) -> str:
     todos = things.last(period, status='completed', include_items=True)
     if todos and len(todos) > limit:
         todos = todos[:limit]
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 @mcp.tool
 async def get_trash() -> str:
     """Get trashed todos"""
     todos = things.trash(include_items=True)
-    if not todos:
-        return "No items found"
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos)
 
 # Basic operations
 @mcp.tool
-async def get_todos(project_uuid: str = None, include_items: bool = True) -> str:
+async def get_todos(project_uuid: str | None = None, include_items: bool = True) -> str:
     """Get todos from Things, optionally filtered by project
     
     Args:
@@ -98,11 +72,7 @@ async def get_todos(project_uuid: str = None, include_items: bool = True) -> str
             return f"Error: Invalid project UUID '{project_uuid}'"
     
     todos = things.todos(project=project_uuid, start=None, include_items=include_items)
-    if not todos:
-        return "No todos found"
-    
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos, "No todos found")
 
 @mcp.tool
 async def get_projects(include_items: bool = False) -> str:
@@ -155,14 +125,10 @@ async def get_tagged_items(tag: str) -> str:
         tag: Tag title to filter by
     """
     todos = things.todos(tag=tag, include_items=True)
-    if not todos:
-        return f"No items found with tag '{tag}'"
-    
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos, f"No items found with tag '{tag}'")
 
 @mcp.tool
-async def get_headings(project_uuid: str = None) -> str:
+async def get_headings(project_uuid: str | None = None) -> str:
     """Get headings from Things
     
     Args:
@@ -179,7 +145,6 @@ async def get_headings(project_uuid: str = None) -> str:
     if not headings:
         return "No headings found"
     
-    from formatters import format_heading
     formatted_headings = [format_heading(heading) for heading in headings]
     return "\n\n---\n\n".join(formatted_headings)
 
@@ -192,20 +157,16 @@ async def search_todos(query: str) -> str:
         query: Search term to look for in todo titles and notes
     """
     todos = things.search(query, include_items=True)
-    if not todos:
-        return f"No todos found matching '{query}'"
-    
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos, f"No todos found matching '{query}'")
 
 @mcp.tool
 async def search_advanced(
-    status: str = None,
-    start_date: str = None,
-    deadline: str = None,
-    tag: str = None,
-    area: str = None,
-    type: str = None
+    status: str | None = None,
+    start_date: str | None = None,
+    deadline: str | None = None,
+    tag: str | None = None,
+    area: str | None = None,
+    type: str | None = None
 ) -> str:
     """Advanced todo search with multiple filters
     
@@ -231,12 +192,9 @@ async def search_advanced(
     if type:
         search_params["type"] = type
     
-    todos = things.todos(include_items=True, **search_params)
-    if not todos:
-        return "No matching todos found"
-    
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    query_items = things.tasks if type else things.todos
+    todos = query_items(include_items=True, **search_params)
+    return format_todos(todos, "No matching todos found")
 
 # Recent items
 @mcp.tool
@@ -247,25 +205,21 @@ async def get_recent(period: str) -> str:
         period: Time period (e.g., '3d', '1w', '2m', '1y')
     """
     todos = things.last(period, include_items=True)
-    if not todos:
-        return f"No items found in the last {period}"
-    
-    formatted_todos = [format_todo(todo) for todo in todos]
-    return "\n\n---\n\n".join(formatted_todos)
+    return format_todos(todos, f"No items found in the last {period}")
 
 # Things URL Scheme tools
 @mcp.tool
 async def add_todo(
     title: str,
-    notes: str = None,
-    when: str = None,
-    deadline: str = None,
-    tags: List[str] = None,
-    checklist_items: List[str] = None,
-    list_id: str = None,
-    list_title: str = None,
-    heading: str = None,
-    heading_id: str = None
+    notes: str | None = None,
+    when: str | None = None,
+    deadline: str | None = None,
+    tags: List[str] | None = None,
+    checklist_items: List[str] | None = None,
+    list_id: str | None = None,
+    list_title: str | None = None,
+    heading: str | None = None,
+    heading_id: str | None = None
 ) -> str:
     """Create a new todo in Things
     
@@ -299,13 +253,13 @@ async def add_todo(
 @mcp.tool
 async def add_project(
     title: str,
-    notes: str = None,
-    when: str = None,
-    deadline: str = None,
-    tags: List[str] = None,
-    area_id: str = None,
-    area_title: str = None,
-    todos: List[str] = None
+    notes: str | None = None,
+    when: str | None = None,
+    deadline: str | None = None,
+    tags: List[str] | None = None,
+    area_id: str | None = None,
+    area_title: str | None = None,
+    todos: List[str] | None = None
 ) -> str:
     """Create a new project in Things
     
@@ -335,17 +289,17 @@ async def add_project(
 @mcp.tool
 async def update_todo(
     id: str,
-    title: str = None,
-    notes: str = None,
-    when: str = None,
-    deadline: str = None,
-    tags: List[str] = None,
-    completed: bool = None,
-    canceled: bool = None,
-    list: str = None,
-    list_id: str = None,
-    heading: str = None,
-    heading_id: str = None
+    title: str | None = None,
+    notes: str | None = None,
+    when: str | None = None,
+    deadline: str | None = None,
+    tags: List[str] | None = None,
+    completed: bool | None = None,
+    canceled: bool | None = None,
+    list: str | None = None,
+    list_id: str | None = None,
+    heading: str | None = None,
+    heading_id: str | None = None
 ) -> str:
     """Update an existing todo in Things
     
@@ -383,13 +337,13 @@ async def update_todo(
 @mcp.tool
 async def update_project(
     id: str,
-    title: str = None,
-    notes: str = None,
-    when: str = None,
-    deadline: str = None,
-    tags: List[str] = None,
-    completed: bool = None,
-    canceled: bool = None
+    title: str | None = None,
+    notes: str | None = None,
+    when: str | None = None,
+    deadline: str | None = None,
+    tags: List[str] | None = None,
+    completed: bool | None = None,
+    canceled: bool | None = None
 ) -> str:
     """Update an existing project in Things
     
@@ -419,8 +373,8 @@ async def update_project(
 @mcp.tool
 async def show_item(
     id: str,
-    query: str = None,
-    filter_tags: List[str] = None
+    query: str | None = None,
+    filter_tags: List[str] | None = None
 ) -> str:
     """Show a specific item or list in Things
     

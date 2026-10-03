@@ -2,23 +2,28 @@ import urllib.parse
 import webbrowser
 import subprocess
 import things
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any
 
 def execute_url(url: str) -> None:
     """Execute a Things URL without bringing Things to the foreground."""
+    script = 'on run argv\n tell application "Things3" to open location (item 1 of argv)\nend run'
     try:
-        subprocess.run([
-            'osascript', '-e', 
-            f'tell application "Things3" to open location "{url}"'
-        ], check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError:
-        # Fallback to webbrowser if osascript fails
-        import webbrowser
-        webbrowser.open(url)
+        subprocess.run(
+            ['osascript', '-e', script, url],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            "Things URL request timed out and may have been applied. Check Things before retrying."
+        ) from None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        if not webbrowser.open(url):
+            raise RuntimeError("Unable to open Things URL via AppleScript or the default browser") from None
+
 
 def construct_url(command: str, params: Dict[str, Any]) -> str:
     """Construct a Things URL from command and parameters."""
-    # Start with base URL
+    params = {key: value for key, value in params.items() if value is not None}
     url = f"things:///{command}"
     
     # Get authentication token if needed
@@ -31,8 +36,6 @@ def construct_url(command: str, params: Dict[str, Any]) -> str:
     if params:
         encoded_params = []
         for key, value in params.items():
-            if value is None:
-                continue
             # Handle boolean values
             if isinstance(value, bool):
                 value = str(value).lower()
@@ -68,7 +71,7 @@ def add_todo(title: str, notes: Optional[str] = None, when: Optional[str] = None
     # Handle tags separately since they need to be comma-separated
     if tags:
         params['tags'] = ','.join(tags)
-    return construct_url('add', {k: v for k, v in params.items() if v is not None})
+    return construct_url('add', params)
 
 def add_project(title: str, notes: Optional[str] = None, when: Optional[str] = None,
                 deadline: Optional[str] = None, tags: Optional[list[str]] = None,
@@ -90,7 +93,7 @@ def add_project(title: str, notes: Optional[str] = None, when: Optional[str] = N
     if tags:
         params['tags'] = ','.join(tags)
         
-    return construct_url('add-project', {k: v for k, v in params.items() if v is not None})
+    return construct_url('add-project', params)
 
 def update_todo(id: str, title: Optional[str] = None, notes: Optional[str] = None,
                 when: Optional[str] = None, deadline: Optional[str] = None,
@@ -116,7 +119,7 @@ def update_todo(id: str, title: Optional[str] = None, notes: Optional[str] = Non
         'heading': heading,
         'heading-id': heading_id
     }
-    return construct_url('update', {k: v for k, v in params.items() if v is not None})
+    return construct_url('update', params)
 
 def update_project(id: str, title: Optional[str] = None, notes: Optional[str] = None,
                    when: Optional[str] = None, deadline: Optional[str] = None,
@@ -133,7 +136,7 @@ def update_project(id: str, title: Optional[str] = None, notes: Optional[str] = 
         'completed': completed,
         'canceled': canceled
     }
-    return construct_url('update-project', {k: v for k, v in params.items() if v is not None})
+    return construct_url('update-project', params)
 
 def show(id: str, query: Optional[str] = None, filter_tags: Optional[list[str]] = None) -> str:
     """Construct URL to show a specific item or list."""
@@ -142,7 +145,7 @@ def show(id: str, query: Optional[str] = None, filter_tags: Optional[list[str]] 
         'query': query,
         'filter': filter_tags
     }
-    return construct_url('show', {k: v for k, v in params.items() if v is not None})
+    return construct_url('show', params)
 
 def search(query: str) -> str:
     """Construct URL to perform a search."""

@@ -1,47 +1,26 @@
 #!/bin/bash
+set -euo pipefail
 
-set -e
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+command -v uv >/dev/null
+command -v dxt >/dev/null
 
-echo "Building Things MCP DXT package..."
+BUILD_PYTHON=$(uv python find '>=3.12')
+BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/things-mcp.XXXXXX")
+trap 'rm -rf "$BUILD_DIR"' EXIT
+PACKAGE_DIR="$BUILD_DIR/package"
+mkdir -p "$PACKAGE_DIR/server" dist
 
-# Clean previous build
-echo "Cleaning previous builds..."
-rm -rf dist/
-mkdir -p dist/
+cp manifest.json "$PACKAGE_DIR/"
+cp things_server.py "$PACKAGE_DIR/server/main.py"
+cp url_scheme.py formatters.py "$PACKAGE_DIR/server/"
 
-# Create temporary directory for DXT contents
-TEMP_DIR=$(mktemp -d)
-echo "Using temporary directory: $TEMP_DIR"
+# Bundle the same runtime dependency versions used by the source installation.
+uv export --locked --no-dev --no-emit-project \
+    --output-file "$BUILD_DIR/requirements.txt" > /dev/null
+uv pip install --python "$BUILD_PYTHON" --target "$PACKAGE_DIR/server/lib" \
+    --require-hashes --requirements "$BUILD_DIR/requirements.txt"
 
-# Copy manifest
-cp manifest.json "$TEMP_DIR/"
-
-# Create server directory structure in temp location
-mkdir -p "$TEMP_DIR/server"
-
-# Copy source files to temp server directory (with proper naming)
-echo "Copying source files..."
-cp things_server.py "$TEMP_DIR/server/main.py"
-cp url_scheme.py "$TEMP_DIR/server/"
-cp formatters.py "$TEMP_DIR/server/"
-
-# Bundle dependencies directly into temp location
-echo "Bundling Python dependencies..."
-# Use Homebrew Python to match runtime environment
-/opt/homebrew/bin/python3 -m pip install --target "$TEMP_DIR/server/lib" "httpx>=0.28.1" "fastmcp>=2.0.0" "things-py>=0.0.15"
-
-# Extract version from manifest.json
-VERSION=$(grep '"version"' manifest.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
-
-# Use dxt pack to create the package
-# Install with "npm install -g @anthropic-ai/dxt"
-echo "Packaging with dxt pack..."
-dxt pack "$TEMP_DIR" "dist/things-mcp-${VERSION}.dxt"
-
-# Clean up temp directory
-rm -rf "$TEMP_DIR"
-
-echo "DXT package created successfully: dist/things-mcp-${VERSION}.dxt"
-ls -la dist/
-
-echo "Build completed successfully!"
+VERSION=$("$BUILD_PYTHON" -c 'import json; print(json.load(open("manifest.json"))["version"])')
+dxt pack "$PACKAGE_DIR" "dist/things-mcp-${VERSION}.dxt"
+echo "Created dist/things-mcp-${VERSION}.dxt"

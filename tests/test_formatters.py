@@ -547,3 +547,23 @@ class TestFormatHeading:
         assert "- Task 1" in result
         assert "- Task 2" in result
         mock_todos.assert_called_once_with(heading='sprint-heading-uuid')
+
+def test_todo_list_reuses_related_lookups_without_changing_output(mock_todo, mocker):
+    from formatters import format_todos
+
+    lookup = mocker.patch('things.get', return_value={'title': 'Related'})
+    expected = '\n\n---\n\n'.join([format_todo(mock_todo), format_todo(mock_todo)])
+    lookup.reset_mock()
+    assert format_todos([mock_todo, mock_todo]) == expected
+    assert lookup.call_count == 3  # One project, one heading and one area per response.
+    lookup.return_value = {'title': 'Renamed'}
+    assert 'Project: Renamed' in format_todos([mock_todo])
+    assert lookup.call_count == 6  # No stale values across requests.
+
+
+@pytest.mark.parametrize('todos', [None, []])
+def test_todo_list_preserves_empty_messages(todos):
+    from formatters import format_todos
+
+    assert format_todos(todos) == 'No items found'
+    assert format_todos(todos, 'No matching todos found') == 'No matching todos found'
